@@ -1,0 +1,14 @@
+node_modules/
+logs/
+*.log
+
+# Env files — never commit real secrets
+.env
+.env.local
+
+# Keep the example
+!.env.example
+
+# Scripts with hardcoded credentials
+seed-admin.js
+setup-ec2.sh
