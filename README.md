@@ -1,6 +1,54 @@
-# PrintMatch API
+# PrintMatch — Backend API
 
-3D printing commission marketplace backend — Node.js + Express + PostgreSQL (RDS) + Socket.io
+REST API for PrintMatch, Thailand's 3D printing commission marketplace.
+
+Live API: **https://api.idkidcidgaf.live**  
+Frontend: **https://app.idkidcidgaf.live**
+
+---
+
+## What it does
+
+Handles all business logic for PrintMatch:
+- JWT authentication (register, login, session)
+- Job lifecycle (post → quote → accept → progress → complete)
+- Printer partner matching with weighted scoring algorithm
+- Escrow payment prototype (hold → release/dispute)
+- Real-time messaging via Socket.io
+- File uploads to S3 (STL, OBJ, photos)
+- Admin endpoints (approvals, appeals, reports)
+
+---
+
+## Tech Stack
+
+| Tool | Purpose |
+|------|---------|
+| Node.js + Express | REST API server |
+| PostgreSQL (AWS RDS) | Database |
+| JWT + bcrypt | Authentication |
+| Socket.io | Real-time messaging |
+| AWS S3 | File storage (3D models, photos) |
+| PM2 | Process manager (cluster mode) |
+
+---
+
+## Cloud Infrastructure
+
+```
+Internet
+ └── ALB (printmatch-alb-90650490.ap-southeast-1.elb.amazonaws.com)
+      ├── HTTPS via ACM certificate
+      ├── Domain: api.idkidcidgaf.live
+      └── Target: EC2 (i-0762af9c3a8531ec6, ap-southeast-1)
+           ├── Node.js app managed by PM2 (2 cluster instances)
+           ├── Connects to: RDS PostgreSQL (managed, separate instance)
+           └── Connects to: S3 (file storage)
+```
+
+---
+
+## 3D printing commission marketplace backend — Node.js + Express + PostgreSQL (RDS) + Socket.io
 
 ## Project structure
 
