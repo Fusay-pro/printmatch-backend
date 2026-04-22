@@ -4,6 +4,7 @@ logs/
 
 # Env files — never commit real secrets
 .env
+.env.*
 .env.local
 
 # Keep the example
