@@ -4,6 +4,13 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const auth = require('../middleware/auth');
 
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7d in ms
+};
+
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { name, email, password, address, latitude, longitude, phone, province } = req.body;
@@ -24,6 +31,7 @@ router.post('/register', async (req, res) => {
     const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     });
+    res.cookie('token', token, COOKIE_OPTS);
     res.status(201).json({ token, user });
   } catch (err) {
     console.error(err);
@@ -55,6 +63,7 @@ router.post('/login', async (req, res) => {
     const printer = await pool.query(
       'SELECT id FROM printer_profiles WHERE user_id=$1', [user.id]
     );
+    res.cookie('token', token, COOKIE_OPTS);
     res.json({ token, user: safeUser, is_printer: printer.rows.length > 0 });
   } catch (err) {
     console.error(err);
@@ -120,6 +129,12 @@ router.patch('/password', auth, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// POST /api/auth/logout
+router.post('/logout', (req, res) => {
+  res.clearCookie('token', { ...COOKIE_OPTS, maxAge: 0 });
+  res.json({ success: true });
 });
 
 module.exports = router;
