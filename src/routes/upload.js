@@ -2,7 +2,6 @@ const router = require('express').Router();
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const auth = require('../middleware/auth');
-const { v4: uuidv4 } = require('crypto');
 
 const s3Client_config = { region: process.env.AWS_REGION };
 if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
