@@ -4,13 +4,14 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const auth = require('../middleware/auth');
 const { v4: uuidv4 } = require('crypto');
 
-const s3 = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
+const s3Client_config = { region: process.env.AWS_REGION };
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  s3Client_config.credentials = {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
+  };
+}
+const s3 = new S3Client(s3Client_config);
 
 const BUCKET = process.env.S3_BUCKET_NAME;
 const EXPIRES = parseInt(process.env.PRESIGNED_URL_EXPIRES || '259200'); // 72h default
@@ -64,8 +65,10 @@ router.post('/photo', auth, async (req, res) => {
 // GET /api/upload/download/:key — get presigned download URL (expires in 72h)
 router.get('/download/:key(*)', auth, async (req, res) => {
   const key = req.params.key;
-  // Key must start with the requesting user's ID to prevent accessing others' files
-  if (!key.startsWith(req.user.id + '/')) {
+  // Keys are prefixed with stl/<userId>/... or photos/<userId>/...
+  const userId = req.user.id;
+  const allowed = key.startsWith(`stl/${userId}/`) || key.startsWith(`photos/${userId}/`);
+  if (!allowed) {
     return res.status(403).json({ error: 'Access denied' });
   }
   try {

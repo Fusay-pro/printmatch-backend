@@ -4,7 +4,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const jwt = require('jsonwebtoken');
 
 const authRoutes = require('./routes/auth');
 const jobRoutes = require('./routes/jobs');
@@ -50,123 +49,64 @@ app.use('/api/portfolio', portfolioRoutes);
 
 // ─── SOCKET.IO — real-time chat + notifications ───────────────────────────────
 const onlineUsers = new Map(); // userId -> socketId
-const pool = require('./db/pool');
-
-// Verify JWT on handshake — reject unauthenticated connections
-io.use((socket, next) => {
-  let token = socket.handshake.auth?.token;
-  if (!token) {
-    // Fall back to cookie if frontend sends credentials: true
-    const raw = socket.handshake.headers.cookie || '';
-    const match = raw.match(/(?:^|;\s*)token=([^;]+)/);
-    if (match) token = match[1];
-  }
-  if (!token) return next(new Error('Authentication required'));
-  try {
-    socket.user = jwt.verify(token, process.env.JWT_SECRET);
-    next();
-  } catch {
-    next(new Error('Invalid or expired token'));
-  }
-});
 
 io.on('connection', (socket) => {
-  const userId = socket.user.id;
-  onlineUsers.set(userId, socket.id);
-  socket.userId = userId;
-  console.log(`User ${userId} online (socket ${socket.id})`);
+  console.log('Socket connected:', socket.id);
 
-  // join — now a no-op for identity (already resolved from JWT); kept for back-compat
-  socket.on('join', () => {});
-
-  // Join a job room — verify the user is actually a participant
-  socket.on('join_job', async (jobId) => {
-    try {
-      const result = await pool.query(
-        `SELECT j.commissioner_id, pp.user_id AS printer_user_id
-         FROM jobs j
-         LEFT JOIN printer_profiles pp ON pp.id = j.assigned_printer_id
-         WHERE j.id = $1`,
-        [jobId]
-      );
-      const job = result.rows[0];
-      if (!job) return;
-      if (job.commissioner_id === userId || job.printer_user_id === userId) {
-        socket.join(`job:${jobId}`);
-      }
-    } catch { /* ignore bad jobId */ }
+  // User joins with their userId
+  socket.on('join', (userId) => {
+    onlineUsers.set(userId, socket.id);
+    socket.userId = userId;
+    console.log(`User ${userId} online`);
   });
 
-  // New chat message — sender identity comes from verified token
+  // Join a job room for job-specific updates
+  socket.on('join_job', (jobId) => {
+    socket.join(`job:${jobId}`);
+  });
+
+  // New chat message — broadcast to job room
   socket.on('send_message', (data) => {
-    // data: { job_id, sender_name, content }
+    // data: { job_id, sender_id, sender_name, content }
     io.to(`job:${data.job_id}`).emit('new_message', {
-      job_id: data.job_id,
-      sender_id: userId,          // server-authoritative
-      sender_name: data.sender_name,
-      content: data.content,
+      ...data,
       created_at: new Date(),
     });
   });
 
   // Progress update — notify commissioner in real time
-  socket.on('progress_update', async (data) => {
-    // data: { job_id, percent_complete, message }
-    try {
-      const result = await pool.query(
-        `SELECT j.commissioner_id FROM jobs j
-         JOIN printer_profiles pp ON pp.id = j.assigned_printer_id
-         WHERE j.id = $1 AND pp.user_id = $2`,
-        [data.job_id, userId]
-      );
-      if (!result.rows.length) return; // not the assigned printer
-      const { commissioner_id } = result.rows[0];
-      io.to(`job:${data.job_id}`).emit('new_progress', {
+  socket.on('progress_update', (data) => {
+    // data: { job_id, commissioner_id, percent_complete, message }
+    io.to(`job:${data.job_id}`).emit('new_progress', data);
+
+    // Also push to commissioner directly if online
+    const commSocket = onlineUsers.get(data.commissioner_id);
+    if (commSocket) {
+      io.to(commSocket).emit('notification', {
+        type: 'progress',
         job_id: data.job_id,
-        percent_complete: data.percent_complete,
-        message: data.message,
+        message: `Your print is ${data.percent_complete}% complete`,
       });
-      const commSocket = onlineUsers.get(commissioner_id);
-      if (commSocket) {
-        io.to(commSocket).emit('notification', {
-          type: 'progress',
-          job_id: data.job_id,
-          message: `Your print is ${data.percent_complete}% complete`,
-        });
-      }
-    } catch { /* ignore */ }
+    }
   });
 
-  // Job status change — verify sender is assigned printer
-  socket.on('job_status_change', async (data) => {
-    // data: { job_id, new_status }
-    try {
-      const result = await pool.query(
-        `SELECT j.commissioner_id FROM jobs j
-         JOIN printer_profiles pp ON pp.id = j.assigned_printer_id
-         WHERE j.id = $1 AND pp.user_id = $2`,
-        [data.job_id, userId]
-      );
-      if (!result.rows.length) return;
-      const { commissioner_id } = result.rows[0];
-      const commSocket = onlineUsers.get(commissioner_id);
-      if (commSocket) {
-        io.to(commSocket).emit('notification', {
-          type: 'status',
-          job_id: data.job_id,
-          message: `Your job status changed to: ${data.new_status}`,
-          new_status: data.new_status,
-        });
-      }
-      io.to(`job:${data.job_id}`).emit('status_updated', {
+  // Job status change — notify relevant users
+  socket.on('job_status_change', (data) => {
+    // data: { job_id, commissioner_id, new_status }
+    const commSocket = onlineUsers.get(data.commissioner_id);
+    if (commSocket) {
+      io.to(commSocket).emit('notification', {
+        type: 'status',
         job_id: data.job_id,
+        message: `Your job status changed to: ${data.new_status}`,
         new_status: data.new_status,
       });
-    } catch { /* ignore */ }
+    }
+    io.to(`job:${data.job_id}`).emit('status_updated', data);
   });
 
   socket.on('disconnect', () => {
-    onlineUsers.delete(userId);
+    if (socket.userId) onlineUsers.delete(socket.userId);
     console.log('Socket disconnected:', socket.id);
   });
 });

@@ -8,7 +8,7 @@ const COOKIE_OPTS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'strict',
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7d in ms
+  maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
 // POST /api/auth/register
@@ -32,7 +32,7 @@ router.post('/register', async (req, res) => {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     });
     res.cookie('token', token, COOKIE_OPTS);
-    res.status(201).json({ token, user });
+    res.status(201).json({ user });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -59,12 +59,11 @@ router.post('/login', async (req, res) => {
 
     const { password_hash, ...safeUser } = user;
 
-    // Check if user has a printer profile
     const printer = await pool.query(
       'SELECT id FROM printer_profiles WHERE user_id=$1', [user.id]
     );
     res.cookie('token', token, COOKIE_OPTS);
-    res.json({ token, user: safeUser, is_printer: printer.rows.length > 0 });
+    res.json({ user: safeUser, is_printer: printer.rows.length > 0 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -109,6 +108,12 @@ router.patch('/me', auth, async (req, res) => {
   }
 });
 
+// POST /api/auth/logout
+router.post('/logout', (req, res) => {
+  res.clearCookie('token', { ...COOKIE_OPTS, maxAge: 0 });
+  res.json({ success: true });
+});
+
 // PATCH /api/auth/password — change password
 router.patch('/password', auth, async (req, res) => {
   if (req.user.is_admin) return res.status(403).json({ error: 'Admins cannot change password via this endpoint' });
@@ -129,12 +134,6 @@ router.patch('/password', auth, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
-});
-
-// POST /api/auth/logout
-router.post('/logout', (req, res) => {
-  res.clearCookie('token', { ...COOKIE_OPTS, maxAge: 0 });
-  res.json({ success: true });
 });
 
 module.exports = router;
