@@ -146,7 +146,7 @@ router.patch('/:id/status', auth, async (req, res) => {
       return res.status(403).json({ error: 'Not your job' });
 
     const result = await pool.query(
-      `UPDATE jobs SET status=$1, tracking_number=COALESCE($2, tracking_number),
+      `UPDATE jobs SET status=$1::job_status, tracking_number=COALESCE($2, tracking_number),
        courier=COALESCE($3, courier),
        shipped_at=CASE WHEN $1='shipped' THEN NOW() ELSE shipped_at END
        WHERE id=$4 RETURNING *`,
