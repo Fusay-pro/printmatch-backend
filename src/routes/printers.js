@@ -123,6 +123,42 @@ router.patch('/:id', auth, async (req, res) => {
   }
 });
 
+// GET /api/printers/:id/portfolio — get all portfolio photos
+router.get('/:id/portfolio', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM printer_portfolio WHERE printer_profile_id=$1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/printers/:id/portfolio — add portfolio photo
+router.post('/:id/portfolio', auth, async (req, res) => {
+  const { image_url, s3_key, caption } = req.body;
+  if (!image_url || !s3_key) return res.status(400).json({ error: 'image_url and s3_key required' });
+  try {
+    const profile = await pool.query('SELECT id FROM printer_profiles WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    if (!profile.rows.length) return res.status(403).json({ error: 'Not your profile' });
+    const result = await pool.query(
+      `INSERT INTO printer_portfolio (printer_profile_id, image_url, image_key, caption) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [req.params.id, image_url, s3_key, caption || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
+});
+
+// DELETE /api/printers/:id/portfolio/:photoId — remove portfolio photo
+router.delete('/:id/portfolio/:photoId', auth, async (req, res) => {
+  try {
+    const profile = await pool.query('SELECT id FROM printer_profiles WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    if (!profile.rows.length) return res.status(403).json({ error: 'Not your profile' });
+    await pool.query('DELETE FROM printer_portfolio WHERE id=$1 AND printer_profile_id=$2', [req.params.photoId, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
+});
+
 // GET /api/printers/match/:jobId — ranked printer list for a job
 router.get('/match/:jobId', auth, async (req, res) => {
   try {

@@ -64,9 +64,8 @@ router.post('/photo', auth, async (req, res) => {
 // GET /api/upload/download/:key — get presigned download URL (expires in 72h)
 router.get('/download/:key(*)', auth, async (req, res) => {
   const key = req.params.key;
-  // Keys are prefixed with stl/<userId>/... or photos/<userId>/...
-  const userId = req.user.id;
-  const allowed = key.startsWith(`stl/${userId}/`) || key.startsWith(`photos/${userId}/`);
+  // Allow any authenticated user to download (files are shared between job participants)
+  const allowed = key.startsWith('stl/') || key.startsWith('photos/');
   if (!allowed) {
     return res.status(403).json({ error: 'Access denied' });
   }
