@@ -10,8 +10,6 @@ router.post('/', auth, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO conversations (commissioner_id, partner_user_id)
        VALUES ($1,$2)
-       ON CONFLICT (commissioner_id, partner_user_id)
-       DO UPDATE SET created_at=conversations.created_at
        RETURNING *`,
       [req.user.id, partner_user_id]
     );
